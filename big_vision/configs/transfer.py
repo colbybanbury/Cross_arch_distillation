@@ -55,6 +55,10 @@ def _set_model(config, model):
     config.model_name = 'bit_paper'
     config.model_init = 'M'
     config.model = dict(depth=50, width=1)
+  elif model == 'bit-m-rx26x05':
+    config.model_name = 'bit_paper'
+    # config.model_init = 'S' no init
+    config.model = dict(depth=26, width=0.5)
   else:
     raise ValueError(f'Unknown model: {model}, please define customized model.')
 
