@@ -70,15 +70,15 @@ def get_config(arg=None):
   config.ckpt_steps = 2500
 
   # Model section
-  config.student_name = 'bit_paper'
-  config.student = dict(depth=26, width=0.5)
+  config.student_name = 'cnn'#'bit_paper'
+  config.student = dict()#dict(depth=26, width=0.5)
 
   config.teachers = ['prof_m']
-  config.prof_m_name = 'vit' #'bit_paper'
-  config.prof_m_init = cd.inits[f'ViT B/32 {arg.data}'] #cd.inits[f'BiT-M R152x2 {arg.data} rc128']
-  config.prof_m = dict(variant='B/32', pool_type='tok')#dict(depth=152, width=2)
+  config.prof_m_name = 'bit_paper'#'vit' #'bit_paper'
+  config.prof_m_init = cd.inits[f'BiT-M R152x2 {arg.data} rc128']#cd.inits[f'ViT B/32 {arg.data}'] #cd.inits[f'BiT-M R152x2 {arg.data} rc128']
+  config.prof_m = dict(depth=152, width=2)#dict(variant='B/32', pool_type='tok')#dict(depth=152, width=2)
 
-  # Preprocessing pipeline for student & tacher.
+  # Preprocessing pipeline for student & teacher.
   pp_common = (
       '|value_range(-1, 1)'
       f'|onehot({config.num_classes}, key="label", key_result="labels")'
