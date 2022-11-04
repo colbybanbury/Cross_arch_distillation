@@ -72,6 +72,9 @@ def get(name, **kw):
   if name.startswith("bv:"):
     mod = importlib.import_module(f"big_vision.datasets.{name[3:]}")
     return mod.DataSource(**kw)
+  elif name.startswith("vww"):
+    mod = importlib.import_module("big_vision.datasets.vww")
+    return mod.DataSource(name, **kw)
   else:
     mod = importlib.import_module("big_vision.datasets.tfds")
     return mod.DataSource(name, **kw)

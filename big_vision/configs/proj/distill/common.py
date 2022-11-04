@@ -22,7 +22,8 @@ inits = {  # pylint: disable=duplicate-key Internally, we override some paths fo
     'BiT-M R152x2 pet rc128': 'gs://bit_models/distill/R152x2_T_pet128.npz',
     'BiT-M R152x2 food rc128': 'gs://bit_models/distill/R152x2_T_food128.npz',
     'BiT-M R152x2 sun rc128': 'gs://bit_models/distill/R152x2_T_sun128.npz',
-    'ViT B/32 flowers': 'gs://imagenet_distill/big_vision/vit_transfer/checkpoint.npz',
-
+    'ViT B/32 flowers': 'gs://imagenet_distill/big_vision/vit_transfer/mixup_inceptioncrop/checkpoint.npz',
+    'vww-vit-i21k-augreg-b': 'gs://imagenet_distill/big_vision/vww/vww-vit-i21k-augreg-b/checkpoint.npz',
+    
 }
 # pylint: enable=line-too-long

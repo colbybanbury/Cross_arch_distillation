@@ -13,28 +13,11 @@
 # limitations under the License.
 
 # pylint: disable=line-too-long
-r"""Distilling BiT-R152x2 into BiT-R50x1 on Flowers/Pet as in https://arxiv.org/abs/2106.05237
+r"""Distilling on Visual Wake Words (https://arxiv.org/pdf/1906.05721.pdf)
 
-While many epochs are required, this is a small dataset, and thus overall it
-is still fast and possible to run on the relatively small v3-8TPUs (or GPUs).
-
-This configuration contains the recommended settings from Fig3/Tab4 of the
-paper, which can be selected via the fast/medium/long config argument.
-(best settings were selected on a 10% minival)
-
-For Flowers:
-- The `fast` variant takes ~1h10m on a v2-8 TPU.
-  Example logs at gs://big_vision/distill/bit_flowers_fast_06-18_2008/big_vision_metrics.txt
-- The `long` variant takes ~25h on a v3-32 TPU.
-  Example logs at gs://big_vision/distill/bit_flowers_long_06-19_0524/big_vision_metrics.txt
-For Pet:
-- The `fast` variant takes ~28min on a v2-8 TPU.
-  Example logs at gs://big_vision/distill/bit_pet_fast_06-16_2338/big_vision_metrics.txt
-- The `long` variant takes ~11h on a v2-8 and ~8h on a v3-32.
-  Example logs at gs://big_vision/distill/bit_pet_long_06-17_0050/big_vision_metrics.txt
 
 big_vision.trainers.proj.distill.distill \
-    --config big_vision/configs/proj/distill/bigsweep_flowers_pet.py:data=flowers,variant=fast \
+    --config big_vision/configs/proj/distill/vww.py:variant=fast \
     --workdir gs://[your_bucket]/big_vision/`date '+%m-%d_%H%M'` \
 """
 
@@ -42,29 +25,24 @@ import big_vision.configs.common as bvcc
 import big_vision.configs.proj.distill.common as cd
 import ml_collections as mlc
 
-NCLS = dict(flowers=102, pet=37)
-
 
 def get_config(arg=None):
-  """Config for massive hypothesis-test on pet."""
-  arg = bvcc.parse_arg(arg, runlocal=False, data='flowers', variant='medium', crop='inception_crop(128)')
+  """Config for massive hypothesis-test on vww"""
+  arg = bvcc.parse_arg(arg, runlocal=False, data='vww', variant='medium')
   config = mlc.ConfigDict()
 
   config.input = {}
   config.input.data = dict(
-      name=dict(flowers='oxford_flowers102', pet='oxford_iiit_pet')[arg.data],
-      split=dict(flowers='train', pet='train[:90%]')[arg.data],
+      name='vww',
+      split='train[:90%]',
   )
   config.input.batch_size = 512
   config.input.cache_raw = True
   config.input.shuffle_buffer_size = 50_000
   config.prefetch_to_device = 4
 
-  config.num_classes = NCLS[arg.data]
-  config.total_epochs = {
-      'flowers': {'fast': 10_000, 'medium': 100_000, 'long': 1_000_000},
-      'pet': {'fast': 1000, 'medium': 3000, 'long': 30_000},
-  }[arg.data][arg.variant]
+  config.num_classes = 2
+  config.total_epochs = {'fast': 1_000, 'medium': 10_000, 'long': 100_000}[arg.variant]
 
   config.log_training_steps = 100
   config.ckpt_steps = 2500
@@ -75,17 +53,22 @@ def get_config(arg=None):
 
   config.teachers = ['prof_m']
 
-  config.prof_m_name = 'bit_paper'
-  config.prof_m_init = cd.inits[f'BiT-M R152x2 {arg.data} rc128']
-  config.prof_m = dict(depth=152, width=2)
+#TODO change
+  # config.prof_m_name = 'bit_paper'
+  # config.prof_m_init = cd.inits[f'BiT-M R152x2 {arg.data} rc128']
+  # config.prof_m = dict(depth=152, width=2)
 
-  # config.prof_m_name = 'vit' 
-  # config.prof_m_init = cd.inits[f'ViT B/32 {arg.data}']
-  # config.prof_m = dict(variant='B/32', pool_type='tok')
+  config.prof_m_name = 'vit' 
+  config.prof_m_init = cd.inits['vww-vit-i21k-augreg-b']
+  config.prof_m = dict(variant='B/32', pool_type='tok')
 
   # if student res is set then the image is resized to that resolution
   #only for the studnet
-  config.student_res = 64
+  config.student_res = 96
+
+  teacher_hres = 448
+  teacher_lres = 384
+  crop = f'inception_crop({teacher_lres})'
 
   # Preprocessing pipeline for student & teacher.
   pp_common = (
@@ -93,50 +76,37 @@ def get_config(arg=None):
       f'|keep("image", "labels", "{config.teachers[0]}")'
   )
   config.input.pp = (
-    f'decode|{arg.crop}|flip_lr'
+    f'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded","image/class/label")|{crop}|flip_lr'
     f'|value_range(-1, 1)|copy("image","prof_m")|resize_small({config.student_res})' 
   )+ pp_common
-  ppv = 'decode|resize_small(160)|central_crop(128)|value_range(-1, 1)' + pp_common
+  ppv = f'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded", "image/class/label")|resize_small({teacher_hres})|central_crop({teacher_lres})|value_range(-1, 1)' + pp_common
 
   if config.student_res is not None:
-    ppv_student = f'decode|resize_small(160)|central_crop(128)|resize_small({config.student_res})|value_range(-1, 1)' + pp_common
+    ppv_student = f'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded", "image/class/label")|resize_small({teacher_hres})|central_crop({teacher_lres})|resize_small({config.student_res})|value_range(-1, 1)' + pp_common
   else:
     ppv_student = ppv
 
-  config.mixup = dict(p=1.0, n=2)
+  config.mixup = dict(p=0.2, n=2)
 
 
   # Distillation settings
   config.distance = 'kl'
-  config.distance_kw = dict(t={
-      'flowers': {'fast': 10., 'medium': 1., 'long': 1.},
-      'pet': {'fast': 5., 'medium': 10., 'long': 2.},
-  }[arg.data][arg.variant])
+  config.distance_kw = dict(t={'fast': 10., 'medium': 1., 'long': 1.}[arg.variant])
 
   # Optimizer section
   config.grad_clip_norm = 1.0
   config.optax_name = 'scale_by_adam'
   config.optax = dict(mu_dtype='bfloat16')
 
-  config.lr = {
-      'flowers': {'fast': 0.003, 'medium': 0.001, 'long': 0.0003},
-      'pet': {'fast': 0.01, 'medium': 0.003, 'long': 0.003},
-  }[arg.data][arg.variant]
-  config.wd = {
-      'flowers': {'fast': None, 'medium': None, 'long': None},# 'flowers': {'fast': 3e-4, 'medium': 1e-4, 'long': 1e-5},
-      'pet': {'fast': 1e-3, 'medium': 3e-4, 'long': 1e-5},
-  }[arg.data][arg.variant]
+  config.lr = {'fast': 0.001, 'medium': 0.0003, 'long': 0.0001}[arg.variant]
+  config.wd = None #{'fast': 3e-4, 'medium': 1e-4, 'long': 1e-5}[arg.variant]
   config.schedule = dict(warmup_steps=1500, decay_type='cosine')
   config.optim_name = 'adam_hp'
 
   # Eval section
   minitrain_split = 'train[:512]' if not arg.runlocal else 'train[:16]'
-  if arg.data == 'flowers':
-    val_split = 'validation' if not arg.runlocal else 'validation[:16]'
-    test_split = 'test' if not arg.runlocal else 'test[:16]'
-  elif arg.data == 'pet':
-    val_split = 'train[90%:]' if not arg.runlocal else 'train[:16]'
-    test_split = 'test' if not arg.runlocal else 'test[:16]'
+  val_split = 'train[90%:]' if not arg.runlocal else 'train[:16]'
+  test_split = 'val' if not arg.runlocal else 'test[:16]'
 
   def get_eval(split):
     return dict(

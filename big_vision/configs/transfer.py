@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # pylint: disable=line-too-long,missing-function-docstring
-r"""A config for transferring vit-augreg.
+"""A config for transferring vit-augreg.
 
 Best HP selected on (mini)val, expected test results (repeated 5 times):
 
@@ -75,6 +75,8 @@ def _set_dataset(config, dataset, crop='inception_crop', h_res=448, l_res=384):
     _set_task(config, 'oxford_iiit_pet', 'train[:90%]', 'train[90%:]', 'test', 37, steps=500, warmup=100, crop=crop, h_res=h_res, l_res=l_res)
   elif dataset == 'oxford_flowers102':
     _set_task(config, 'oxford_flowers102', 'train[:90%]', 'train[90%:]', 'test', 102, steps=500, warmup=100, crop=crop, h_res=h_res, l_res=l_res)
+  elif dataset == 'vww':
+    _set_task(config, 'vww', 'train[:90%]', 'train[90%:]', 'val', 2, steps=500, warmup=100, crop=crop, h_res=h_res, l_res=l_res)
   else:
     raise ValueError(
         f'Unknown dataset: {dataset}, please define customized dataset.')
@@ -97,12 +99,13 @@ def _set_task(config, dataset, train, val, test, n_cls,
       'keep("image", "labels")'
   )
 
+
   if crop == 'inception_crop':
-    pp_train = f'decode|inception_crop({l_res})'
+    pp_train = f'inception_crop({l_res})'
   elif crop == 'resmall_crop':
-    pp_train = f'decode|resize_small({h_res})|random_crop({l_res})'
+    pp_train = f'resize_small({h_res})|random_crop({l_res})'
   elif crop == 'resize_crop':
-    pp_train = f'decode|resize({h_res})|random_crop({l_res})'
+    pp_train = f'resize({h_res})|random_crop({l_res})'
   else:
     raise ValueError(f'Unknown crop: {crop}. Must be one of: '
                      'inception_crop, resmall_crop, resize_crop')
@@ -110,8 +113,19 @@ def _set_task(config, dataset, train, val, test, n_cls,
     pp_train += '|flip_lr'
   config.input.pp = pp_train + pp_common
 
-  pp = f'decode|resize_small({h_res})|central_crop({l_res})' + pp_common
+  pp = f'resize_small({h_res})|central_crop({l_res})' + pp_common
   config.num_classes = n_cls
+
+  #Fix incompatible feature naming convention in VWW dataset 
+  #(image/encoded -> image, image/class/label -> label)
+  #plus remove decode
+  if dataset == 'vww':
+    config.input.pp = 'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded", "image/class/label")|' + pp_train + pp_common
+    pp = 'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded", "image/class/label")|' + pp
+  else:
+    config.input.pp = 'decode|' + pp_train + pp_common
+    pp = 'decode|' + pp
+
 
   def get_eval(split):
     return dict(
@@ -148,7 +162,6 @@ def _set_imagenet_variants(config, h_res=448, l_res=384):
   config.evals.v2.loss_name = config.loss
   config.evals.v2.log_steps = 100
 
-
 def get_config(arg=None):
   """Config for adaptation."""
   arg = bvcc.parse_arg(arg, model='vit', dataset='cifar10', crop='resmall_crop',
@@ -169,7 +182,7 @@ def get_config(arg=None):
   config.wd = None  # That's our default, but just being explicit here!
   config.loss = 'softmax_xent'
   config.lr = 0.01
-  config.mixup = dict(p=0.0)
+  config.mixup = dict(p=0.2, n=2)#dict(p=0.0)
 
   config.seed = 0
 

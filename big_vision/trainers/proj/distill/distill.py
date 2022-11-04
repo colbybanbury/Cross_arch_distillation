@@ -51,6 +51,8 @@ import optax
 import tensorflow as tf
 from tensorflow.io import gfile
 
+import big_vision.pp.ops_image as pp_ops_image
+
 # pylint: disable=logging-fstring-interpolation
 
 
@@ -169,9 +171,9 @@ def main(argv):
   # be sent there later as needed, otherwise we already encountered two
   # situations where we allocate them twice.
   def get_init(model):
-    @partial(jax.jit, backend="cpu")
-    def _init(rng):
-      shape = tuple(train_ds.element_spec["image"].shape[1:])
+    #TODO fix this. Had to remove jit in order to have diff res for the teacher and student 
+    # @partial(jax.jit, backend="cpu")
+    def _init(rng, shape):
       bs = batch_size // jax.device_count()
       dummy_input = jnp.zeros((bs,) + shape, jnp.float32)
       params = flax.core.unfreeze(model.init(rng, dummy_input))["params"]
@@ -184,8 +186,10 @@ def main(argv):
     return _init
 
   rng, *rng_inits = jax.random.split(rng, len(models) + 1)
-  params_cpu = {name: get_init(models[name])(rngi)
-                for name, rngi in zip(models, rng_inits)}
+  shapes = [tuple(train_ds.element_spec[name].shape[1:]) for name in ["image"] +config.teachers]
+  print(shapes)
+  params_cpu = {name: get_init(models[name])(rngi, shape)
+                for name, rngi, shape in zip(models, rng_inits, shapes)}
 
   if jax.process_index() == 0:
     for name, params in params_cpu.items():
