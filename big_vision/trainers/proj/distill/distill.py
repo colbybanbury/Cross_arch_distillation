@@ -186,7 +186,7 @@ def main(argv):
     return _init
 
   rng, *rng_inits = jax.random.split(rng, len(models) + 1)
-  if config.student_res:
+  if config.get('student_res'):
     shapes = [tuple(train_ds.element_spec[name].shape[1:]) for name in ["image"] + config.teachers]
   else:
     shapes = [tuple(train_ds.element_spec["image"].shape[1:])]
