@@ -41,7 +41,30 @@ builder = tfds.builder_from_directory('/home/colby/Cross_arch_distillation/perso
 # Metadata are avalailable as usual
 print(builder.info.splits['train'].num_examples)
 
+
+import matplotlib.pyplot as plt
+
+import big_vision.utils as u
+import jax
+import numpy as np
 # Construct the tf.data.Dataset pipeline
 ds = builder.as_dataset()['train']
-for example in ds.take(1):
-    print(example)
+
+examples = ds.take(10)
+batch = {'image': []}
+shape = (480, 640, 3)
+for example in examples:
+    if example['image/encoded'].shape != shape:
+        continue
+    rescaled_image = example['image/encoded'] / np.max(np.abs(example['image/encoded']),axis=0)
+    batch['image'].append(rescaled_image)
+batch['image'] = np.stack(batch['image'])
+
+print(batch['image'].shape)
+rng = jax.random.PRNGKey(1) #keep fixed seed
+rng, _, batch = u.mixup(rng, p=1.0, n=2, **batch)
+
+
+for i, example in enumerate(batch['image']):
+    plt.imshow(example)
+    plt.savefig(f'test_images/test{i}.png')
