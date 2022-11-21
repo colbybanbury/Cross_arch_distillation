@@ -149,8 +149,10 @@ class DepthwiseSeparable(nn.Module):
 class Model(nn.Module):
     """MobileNetV1 model."""
     num_classes: int
-    strides: Sequence[int] = (1, 2, 1, 2, 1, 2, 1)
-    channels: Sequence[int] = (64, 128, 128, 256, 256, 512, 512)
+    first_conv_features: int = 8
+    # matches the MLPerf tiny Default
+    strides: Sequence[int] = (1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 1, 2, 1)
+    channels: Sequence[int] = (16, 32, 32, 64, 64, 128, 128, 128, 128, 128, 128, 256, 256)
     use_bn: bool = False
 
     @nn.compact
@@ -158,7 +160,7 @@ class Model(nn.Module):
         out = {}
 
         initial_conv = nn.Conv(
-            features=32,
+            features=self.first_conv_features,
             kernel_size=(3, 3),
             strides=2,
             padding="SAME",
@@ -170,7 +172,7 @@ class Model(nn.Module):
         x = nn.relu(x)
         for i in range(len(self.strides)):
             if i == 0:
-                in_feat = 32
+                in_feat = self.first_conv_features
             else:
                 in_feat = self.channels[i - 1]
             block = DepthwiseSeparable(in_features=in_feat,
