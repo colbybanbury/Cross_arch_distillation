@@ -67,7 +67,9 @@ def get_config(runlocal=False):
 
   # Model section
   config.model_name = 'mobilenetV1'
+  config.model_init = 'gs://imagenet_distill/big_vision/imgnet1k/mbnet-scratch/lr045_wd00003-bs512/01-09_1819/checkpoint.npz'
   config.model = dict()
+  config.model_load = dict(dont_load=['head/kernel', 'head/bias'])
 
   # config.model_name = 'vit' 
   # config.model = dict(variant='B/32', pool_type='tok')
