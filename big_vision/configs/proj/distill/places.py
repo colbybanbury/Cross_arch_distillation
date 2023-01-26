@@ -94,8 +94,8 @@ def get_config(arg=None):
 
   # Preprocessing pipeline for student & teacher.
   pp_common = (
-      f'|onehot(365, key="label", key_result="labels")'
-      f'|keep("image", "labels", "{config.teachers[0]}")'
+      # f'|onehot(config.num_classes, key="label", key_result="labels")'
+      f'|keep("image", "{config.teachers[0]}")' #removed keep labels
   )
   config.input.pp = (
     f'decode|{crop}|flip_lr'
