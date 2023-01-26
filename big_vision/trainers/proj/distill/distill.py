@@ -242,6 +242,12 @@ def main(argv):
       measurements[f"distill_loss_{name}"] = l
       measurements["distill_loss"] += l
 
+    #Measure agreement between student and teacher
+    if config.get("measure_agreement"):
+      for name in config.teachers:
+        measurements[f"agreement_top1_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=1)
+        measurements[f"agreement_top5_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=5)
+
     outputs = (measurements["distill_loss"], measurements)
     return jax.tree_map(jnp.mean, outputs) if reduce else outputs
 
