@@ -246,7 +246,8 @@ def main(argv):
     if config.get("measure_agreement"):
       for name in config.teachers:
         measurements[f"agreement_top1_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=1)
-        measurements[f"agreement_top5_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=5)
+        if config.num_classes > 5:
+          measurements[f"agreement_top5_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=5)
 
     outputs = (measurements["distill_loss"], measurements)
     return jax.tree_map(jnp.mean, outputs) if reduce else outputs
