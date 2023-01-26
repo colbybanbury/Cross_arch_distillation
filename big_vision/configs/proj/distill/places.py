@@ -70,7 +70,7 @@ def get_config(arg=None):
 
   config.prof_m_name = 'vit' 
   # config.prof_m_init = 'gs://imagenet_distill/big_vision/places/vit1k_transfer/01-24_0022/checkpoint.npz'
-  
+
   #vww teacher
   config.prof_m_init = 'gs://imagenet_distill/big_vision/vww/transfer_vit-i1k-augreg-b32/12-01_2330/checkpoint.npz'
   config.prof_m = dict(variant='B/32', pool_type='tok')
@@ -141,7 +141,7 @@ def get_config(arg=None):
   #       loss_name='softmax_xent',
   #       log_steps=500,
   #   )
-  # config.evals = {}
+  config.evals = {}
   # config.evals.student_train = get_eval(minitrain_split)
   # config.evals.student_val = get_eval(val_split)
   # # config.evals.student_test = get_eval(test_split)
