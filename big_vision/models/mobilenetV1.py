@@ -188,3 +188,10 @@ class Model(nn.Module):
 
         out["logits"] = x #Need this for distillation
         return x, out
+
+def load(init_params, init_file, model_cfg, dont_load=()):
+  """Load init from checkpoint."""
+  del model_cfg  # Unused
+  params = utils.load_params(None, init_file)
+  params = common.merge_params(params, init_params, dont_load)
+  return params
