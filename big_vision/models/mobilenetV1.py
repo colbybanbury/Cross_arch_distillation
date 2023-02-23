@@ -124,7 +124,7 @@ class DepthwiseSeparable(nn.Module):
             self.in_features, self.dw_kernel_size, stride=self.stride, dilation=self.dilation,
             padding=self.pad_type, conv_name='conv_dw')(x)
         if self.use_bn:
-            x = self.norm_layer(name='bn_dw')(x, use_running_average=not training)
+            x = self.norm_layer(name='bn_dw')(x, use_running_average=training)
         x = self.act_fn(x)
 
         # if self.se_layer is not None and self.se_ratio > 0:
@@ -136,7 +136,7 @@ class DepthwiseSeparable(nn.Module):
             self.out_features, self.pw_kernel_size, padding=self.pad_type,
             conv_name='conv_pw')(x)
         if self.use_bn:
-            x = self.norm_layer(name='bn_pw')(x, use_running_average=not training)
+            x = self.norm_layer(name='bn_pw')(x, use_running_average=training)
         if self.pw_act:
             x = self.act_fn(x)
 
@@ -168,7 +168,7 @@ class Model(nn.Module):
 
         x = initial_conv(image)
         if self.use_bn:
-            x = nn.BatchNorm()(x, use_running_average=not train)
+            x = nn.BatchNorm()(x, use_running_average=train)
         x = nn.relu(x)
         for i in range(len(self.strides)):
             if i == 0:
