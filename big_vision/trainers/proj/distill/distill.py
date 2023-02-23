@@ -131,8 +131,27 @@ def main(argv):
 
   write_note("Initializing train dataset...")
   train_data = ds_core.get(**config.input.data)
+  train_ds = train_data.get_tfdata(ordered=False)
+
+  #if we are using places and we are doing binary classification (person detection)
+  #we need to balance the dataset
+  if config.input.data.get("name") == "places365_small" and config.num_classes == 2:
+    tfds_ids = np.load("balanced_places_tfds_ids.npy", allow_pickle=True)
+    keys = tf.constant(tfds_ids)
+    vals = tf.ones_like(keys, dtype=tf.int32)
+    ht = tf.lookup.StaticHashTable(
+        tf.lookup.KeyValueTensorInitializer(keys, vals), default_value=0)
+
+    @tf.function
+    def filter_fn(x):
+      return ht.lookup(x["tfds_id"]) == 1
+    
+    train_ds = train_ds.filter(filter_fn)
+    write_note("Places dataset balanced for binary classification")
+
+
   train_ds = input_pipeline.make_for_train(
-      data=train_data.get_tfdata(ordered=False),
+      data=train_ds,
       batch_size=batch_size,
       preprocess_fn=pp_builder.get_preprocess_fn(config.input.get("pp")),
       shuffle_buffer_size=config.input.get("shuffle_buffer_size"),
@@ -170,13 +189,13 @@ def main(argv):
   # We want all parameters to be created in host RAM, not on any device, they'll
   # be sent there later as needed, otherwise we already encountered two
   # situations where we allocate them twice.
-  def get_init(model):
+  def get_init(model, train=False):
     #TODO fix this. Had to remove jit in order to have diff res for the teacher and student 
     # @partial(jax.jit, backend="cpu")
     def _init(rng, shape):
       bs = batch_size // jax.device_count()
       dummy_input = jnp.zeros((bs,) + shape, jnp.float32)
-      params = flax.core.unfreeze(model.init(rng, dummy_input))["params"]
+      params = flax.core.unfreeze(model.init(rng, dummy_input, train=False))["params"]
 
       # Set bias in the head to a low value, such that loss is small initially.
       if "init_head_bias" in config:
@@ -191,7 +210,8 @@ def main(argv):
   else:
     shapes = [tuple(train_ds.element_spec["image"].shape[1:])] * len(models)
   print(shapes)
-  params_cpu = {name: get_init(models[name])(rngi, shape)
+  
+  params_cpu = {name: get_init(models[name], train=name == "student")(rngi, shape)
                 for name, rngi, shape in zip(models, rng_inits, shapes)}
 
   if jax.process_index() == 0:
