@@ -195,11 +195,11 @@ def main(argv):
     def _init(rng, shape):
       bs = batch_size // jax.device_count()
       dummy_input = jnp.zeros((bs,) + shape, jnp.float32)
-      params = flax.core.unfreeze(model.init(rng, dummy_input, train=False))["params"]
+      params = flax.core.unfreeze(model.init(rng, dummy_input, train=False))
 
       # Set bias in the head to a low value, such that loss is small initially.
       if "init_head_bias" in config:
-        params["head"]["bias"] = jnp.full_like(params["head"]["bias"],
+        params["params"]["head"]["bias"] = jnp.full_like(params["params"]["head"]["bias"],
                                                config["init_head_bias"])
       return params
     return _init
@@ -211,7 +211,7 @@ def main(argv):
     shapes = [tuple(train_ds.element_spec["image"].shape[1:])] * len(models)
   print(shapes)
   
-  params_cpu = {name: get_init(models[name], train=name == "student")(rngi, shape)
+  params_cpu = {name: get_init(models[name])(rngi, shape)
                 for name, rngi, shape in zip(models, rng_inits, shapes)}
 
   if jax.process_index() == 0:
@@ -225,26 +225,32 @@ def main(argv):
   # nothing else to be optimized. If we ever want to add learnable projections
   # or similar for good (we explored but ditched), need to refactor this a bit.
   tx, sched_fns = bv_optax.make(
-      config, params_cpu["student"], sched_kw=dict(
+      config, params_cpu["student"]["params"], sched_kw=dict(
           total_steps=total_steps, batch_size=batch_size, data_size=ntrain_img))
 
   # We jit this, such that the arrays are created on the CPU, not device[0].
-  opt_cpu = jax.jit(tx.init, backend="cpu")(params_cpu["student"])
+  opt_cpu = jax.jit(tx.init, backend="cpu")(params_cpu["student"]["params"])
   sched_fns_cpu = [jax.jit(sched_fn, backend="cpu") for sched_fn in sched_fns]
 
   @jax.named_call
   def loss_fn(student_params, params, data, rngs, reduce=True):
     # Note: need to extract and use `student_params` out of `params` because the
     # first argument of `loss_fn` is what's differentiated wrt.
-    params["student"] = student_params
+    params["student"]["params"] = student_params
 
     def fwd(name, params):
       return jax.named_call(models[name].apply, name=name)(
-          {"params": params}, getfirst(data, name, "image"),
-          train=name == "student", rngs=rngs.get(name)
-      )[0]  # logits, unused_outputs
+          params, getfirst(data, name, "image"),
+          train=name == "student", rngs=rngs.get(name),
+          mutable=["batch_stats"] if name == "student" else False  #allows the use of batch norm in the student
+      )
     logits = {name: fwd(name, w) for name, w in params.items()}
 
+    mutated_vars = logits["student"][1] #unpack the mutated vars
+
+    #get rid of the mutated vars, which for some reason all models return
+    logits = {name: lg[0] for name, lg in logits.items()}
+    
     measurements = {}
     for name, lg in logits.items():
       measurements[f"entropy_{name}"] = -jnp.sum(
@@ -269,7 +275,7 @@ def main(argv):
         if config.num_classes > 5:
           measurements[f"agreement_top5_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=5)
 
-    outputs = (measurements["distill_loss"], measurements)
+    outputs = (measurements["distill_loss"], (measurements, mutated_vars))
     return jax.tree_map(jnp.mean, outputs) if reduce else outputs
 
   @partial(jax.pmap, axis_name="batch", donate_argnums=(0, 1))
@@ -290,14 +296,14 @@ def main(argv):
         for name, rngi in zip(models, rng_models)
     }
 
-    w = params["student"]  # Need to explicitly pull out the optimized ones.
-    (l, measurements), grads = jax.lax.pmean(
+    w = params["student"]["params"]  # Need to explicitly pull out the optimized ones.
+    (l, (measurements, batch_stats)), grads = jax.lax.pmean(
         jax.value_and_grad(loss_fn, has_aux=True)(
             w, params, data, rngs=rngs_models_local),
         axis_name="batch")
     updates, opt = tx.update(grads, opt, w)
     w = optax.apply_updates(w, updates)
-    params["student"] = w
+    params["student"] = {"params": w, **batch_stats}
 
     # Take some logging measurements
     gs = jax.tree_leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
@@ -314,8 +320,8 @@ def main(argv):
   for name in config.teachers:
     init_def = config[f"{name}_init"]
     write_note(f"Initializing {name} from {init_def}…")
-    params_cpu[name] = get_model_mod(name).load(
-        params_cpu[name], init_def, config[name],
+    params_cpu[name]["params"] = get_model_mod(name).load(
+        params_cpu[name]["params"], init_def, config[name],
         **config.get(f"{name}_load", {}))
 
   # Decide how to initialize training. The order is important.
@@ -331,22 +337,22 @@ def main(argv):
   if resume_ckpt_path:
     write_note("Resume training from checkpoint...")
     # NOTE: we never change the teachers, so only checkpoint student here.
-    checkpoint = {"params": params_cpu["student"],
+    checkpoint = {"params": params_cpu["student"]["params"],
                   "opt": opt_cpu, "chrono": chrono.save()}
     checkpoint_tree = jax.tree_structure(checkpoint)
     loaded = u.load_checkpoint(checkpoint_tree, resume_ckpt_path)
     # bfloat16 type gets lost when data is saved to disk, so we recover it.
     checkpoint = jax.tree_map(u.recover_dtype, loaded)
-    params_cpu["student"], opt_cpu = checkpoint["params"], checkpoint["opt"]
+    params_cpu["student"]["params"], opt_cpu = checkpoint["params"], checkpoint["opt"]
     chrono.load(checkpoint["chrono"])
   elif config.get("student_init"):
     write_note(f"Initialize student from {config.student_init}...")
-    params_cpu["student"] = get_model_mod("student").load(
-        params_cpu["student"], config.student_init, config.get("student"),
+    params_cpu["student"]["params"] = get_model_mod("student").load(
+        params_cpu["student"]["params"], config.student_init, config.get("student"),
         **config.get("student_load", {}))
     if jax.process_index() == 0:
       parameter_overview.log_parameter_overview(
-          params_cpu["student"], msg="restored (student) params")
+          params_cpu["student"]["params"], msg="restored (student) params")
 
   write_note("Kicking off misc stuff...")
   first_step = bv_optax.get_count(opt_cpu)
@@ -366,7 +372,7 @@ def main(argv):
   predict_fns = {}
   for name, model in models.items():
     def fwd(params, image, n=name, m=model):
-      return m.apply({"params": params[n]}, image)
+      return m.apply(params[n], image, train=False)
     predict_fns[f"{name}_fwd"] = fwd
   # 2. One for the ensemble of all teachers.
   def teacher_ensemble_fwd(params, image):
@@ -427,15 +433,15 @@ def main(argv):
       # We need to transfer the weights over now or else we risk keeping them
       # alive while they'll be updated in a future step, creating hard to debug
       # memory errors (see (internal link)). Also, takes device 0's params only.
-      params_cpu["student"], opt_cpu = jax.tree_map(
-          lambda x: np.array(x[0]), (params_repl["student"], opt_repl))
+      params_cpu["student"]["params"], opt_cpu = jax.tree_map(
+          lambda x: np.array(x[0]), (params_repl["student"]["params"], opt_repl))
 
       # Check whether we want to keep a copy of the current checkpoint.
       copy_step = None
       if u.itstime(step, get_steps("keep_ckpt", None), total_steps):
         copy_step = step
 
-      ckpt = {"params": params_cpu["student"],
+      ckpt = {"params": params_cpu["student"]["params"],
               "opt": opt_cpu,
               "chrono": chrono.save()}
       ckpt_writer = pool.apply_async(
