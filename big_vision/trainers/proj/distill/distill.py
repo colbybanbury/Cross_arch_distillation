@@ -246,9 +246,9 @@ def main(argv):
       )
     logits = {name: fwd(name, w) for name, w in params.items()}
 
-    mutated_vars = logits["student"][1] #unpack the mutated vars
+    logits["student"], updated_batch_stats = logits["student"] #unpack the updated_batch_stats
 
-    #get rid of the mutated vars, which for some reason all models return
+    #get rid of the 'out' variable which is not needed
     logits = {name: lg[0] for name, lg in logits.items()}
     
     measurements = {}
@@ -275,7 +275,7 @@ def main(argv):
         if config.num_classes > 5:
           measurements[f"agreement_top5_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=5)
 
-    outputs = (measurements["distill_loss"], (measurements, mutated_vars))
+    outputs = (measurements["distill_loss"], (measurements, updated_batch_stats))
     return jax.tree_map(jnp.mean, outputs) if reduce else outputs
 
   @partial(jax.pmap, axis_name="batch", donate_argnums=(0, 1))
