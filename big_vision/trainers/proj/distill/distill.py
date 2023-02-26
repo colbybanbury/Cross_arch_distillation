@@ -274,9 +274,11 @@ def main(argv):
         measurements[f"agreement_top1_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=1)
         if config.num_classes > 5:
           measurements[f"agreement_top5_{name}"] = dd.dist(logits["student"], logits[name], "agree",k=5)
-
+          
+    if reduce: #don't reduce batch stats
+      measurements = jax.tree_map(jnp.mean, measurements)
     outputs = (measurements["distill_loss"], (measurements, updated_batch_stats))
-    return jax.tree_map(jnp.mean, outputs) if reduce else outputs
+    return outputs
 
   @partial(jax.pmap, axis_name="batch", donate_argnums=(0, 1))
   def update_fn(params, opt, rng, data):
@@ -297,13 +299,17 @@ def main(argv):
     }
 
     w = params["student"]["params"]  # Need to explicitly pull out the optimized ones.
-    (l, (measurements, batch_stats)), grads = jax.lax.pmean(
-        jax.value_and_grad(loss_fn, has_aux=True)(
-            w, params, data, rngs=rngs_models_local),
-        axis_name="batch")
+    (l, (measurements, batch_stats)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
+            w, params, data, rngs=rngs_models_local)
+
+    # Reduce across devices for everything except the batch stats.
+    l = jax.lax.pmean(l, axis_name="batch")
+    measurements = jax.lax.pmean(measurements, axis_name="batch")
+    grads = jax.lax.pmean( grads, axis_name="batch")
+
     updates, opt = tx.update(grads, opt, w)
     w = optax.apply_updates(w, updates)
-    params["student"] = {"params": w, **batch_stats}
+    params["student"] = {'params': w, 'batch_stats': batch_stats['batch_stats']}
 
     # Take some logging measurements
     gs = jax.tree_leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
@@ -338,12 +344,14 @@ def main(argv):
     write_note("Resume training from checkpoint...")
     # NOTE: we never change the teachers, so only checkpoint student here.
     checkpoint = {"params": params_cpu["student"]["params"],
+                  "batch_stats": params_cpu["student"]["batch_stats"],
                   "opt": opt_cpu, "chrono": chrono.save()}
     checkpoint_tree = jax.tree_structure(checkpoint)
     loaded = u.load_checkpoint(checkpoint_tree, resume_ckpt_path)
     # bfloat16 type gets lost when data is saved to disk, so we recover it.
     checkpoint = jax.tree_map(u.recover_dtype, loaded)
-    params_cpu["student"]["params"], opt_cpu = checkpoint["params"], checkpoint["opt"]
+    params_cpu["student"]["params"], params_cpu["student"]["batch_stats"], opt_cpu = checkpoint["params"],\
+                                                              checkpoint["batch_stats"], checkpoint["opt"]
     chrono.load(checkpoint["chrono"])
   elif config.get("student_init"):
     write_note(f"Initialize student from {config.student_init}...")
@@ -433,8 +441,8 @@ def main(argv):
       # We need to transfer the weights over now or else we risk keeping them
       # alive while they'll be updated in a future step, creating hard to debug
       # memory errors (see (internal link)). Also, takes device 0's params only.
-      params_cpu["student"]["params"], opt_cpu = jax.tree_map(
-          lambda x: np.array(x[0]), (params_repl["student"]["params"], opt_repl))
+      params_cpu["student"]["params"], params_cpu["student"]["batch_stats"], opt_cpu = jax.tree_map(
+          lambda x: np.array(x[0]), (params_repl["student"]["params"], params_repl["student"]["batch_stats"], opt_repl))
 
       # Check whether we want to keep a copy of the current checkpoint.
       copy_step = None
@@ -442,6 +450,7 @@ def main(argv):
         copy_step = step
 
       ckpt = {"params": params_cpu["student"]["params"],
+              "batch_stats": params_cpu["student"]["batch_stats"],
               "opt": opt_cpu,
               "chrono": chrono.save()}
       ckpt_writer = pool.apply_async(
