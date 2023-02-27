@@ -122,7 +122,7 @@ class DepthwiseSeparable(nn.Module):
 
         x = create_conv2d(
             self.in_features, self.dw_kernel_size, stride=self.stride, dilation=self.dilation,
-            padding=self.pad_type, conv_name='conv_dw')(x)
+            padding=self.pad_type, conv_name='conv_dw', depthwise=True)(x)
         if self.use_bn:
             x = self.norm_layer(name='bn_dw')(x, use_running_average=not training)
         x = self.act_fn(x)
