@@ -50,13 +50,23 @@ def get_config(arg=None):
   # Model section
   # config.student_name = 'cnn'#'bit_paper'
   # config.student = dict()#dict(depth=26, width=0.5)
+
+
+  config.student_name = 'efficientnet_jax_wrapper'
+  config.student = dict(variant='tf_efficientnet_lite0_035w')
+
   
-  config.student_name = 'mobilenetV1'
-  # config.student_init = 'gs://imagenet_distill/big_vision/imgnet1k/s-mbnet-bit1k/lr003-wd00003/12-17_0040/checkpoint.npz'
-  # config.student_init = 'gs://imagenet_distill/big_vision/imgnet1k/mbnet-scratch/lr045_wd00003-bs512/01-09_1819/checkpoint.npz'
-  config.student_init = 'gs://imagenet_distill/big_vision/imgnet1k/s-mbnet-vit21k/01-17_1812/checkpoint.npz'
-  config.student = dict()
-  config.student_load = dict(dont_load=['head/kernel', 'head/bias'])
+  # config.student_name = 'mobilenetV1'
+  # # config.student_init = 'gs://imagenet_distill/big_vision/imgnet1k/s-mbnet-bit1k/lr003-wd00003/12-17_0040/checkpoint.npz'
+  # # config.student_init = 'gs://imagenet_distill/big_vision/imgnet1k/mbnet-scratch/lr045_wd00003-bs512/01-09_1819/checkpoint.npz'
+  # # config.student_init = 'gs://imagenet_distill/big_vision/places_balanced/s-mbnet-vit1k_person/lr000375/02-03_1804/checkpoint.npz'
+  # config.student_init = "gs://imagenet_distill/big_vision/imgnet1k/s-mbnet-vit1k/lr003-wd00003/12-22_1957/checkpoint.npz" #best
+  # # config.student_init = 'gs://imagenet_distill/big_vision/places/s-mbnet-bit21k/02-07_0409/checkpoint.npz'
+
+  # config.student_init = 'gs://imagenet_distill/big_vision/vww/s-mbnet-pretrain-vit1k/12-27_1422/checkpoint.npz'
+  # config.student = dict(use_bn=True)
+  # config.student_load = dict(dont_load=['head/kernel', 'head/bias'])
+  # config.student_load = dict(dont_load=['head/kernel', 'head/bias', '^(DepthwiseSeparable_)[0-9]*(\/bn_)../[a-z]*$', '^(BatchNorm_0/)[a-z]*$', 'Conv_0/bias'])
 
   config.teachers = ['prof_m']
 
@@ -64,13 +74,13 @@ def get_config(arg=None):
   # config.prof_m_init = cd.inits[f'BiT-M R152x2 {arg.data} rc128']
   # config.prof_m = dict(depth=152, width=2)
 
-  config.prof_m_name = 'vit' 
-  config.prof_m_init = cd.inits['vww-vit-i21k-augreg-b']
-  config.prof_m = dict(variant='B/32', pool_type='tok')
-
   # config.prof_m_name = 'vit' 
-  # config.prof_m_init = 'gs://imagenet_distill/big_vision/vww/transfer_vit-i1k-augreg-b32/12-01_2330/checkpoint.npz'
+  # config.prof_m_init = cd.inits['vww-vit-i21k-augreg-b']
   # config.prof_m = dict(variant='B/32', pool_type='tok')
+
+  config.prof_m_name = 'vit' 
+  config.prof_m_init = 'gs://imagenet_distill/big_vision/vww/transfer_vit-i1k-augreg-b32/12-01_2330/checkpoint.npz'
+  config.prof_m = dict(variant='B/32', pool_type='tok')
 
   # config.prof_m_name = 'bit_paper' 
   # config.prof_m_init = 'gs://imagenet_distill/big_vision/vww/transfer_biT-S-R101x1/11-30_0414/checkpoint.npz'
@@ -85,7 +95,7 @@ def get_config(arg=None):
   #only for the studnet
   config.student_res = 96
 
-  teacher_hres = 448
+  teacher_hres = 384
   teacher_lres = 384
   crop = f'inception_crop({teacher_lres})'
 
@@ -95,7 +105,7 @@ def get_config(arg=None):
       f'|keep("image", "labels", "{config.teachers[0]}")'
   )
   config.input.pp = (
-    f'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded","image/class/label")|{crop}|flip_lr'
+    f'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded","image/class/label")|{crop}|flip_lr|randaug|'
     f'|value_range(-1, 1)|copy("image","prof_m")|resize_small({config.student_res})' 
   )+ pp_common
   ppv = f'copy("image/encoded","image")|copy("image/class/label","label")|drop("image/encoded", "image/class/label")|resize_small({teacher_hres})|central_crop({teacher_lres})|value_range(-1, 1)' + pp_common
@@ -118,7 +128,7 @@ def get_config(arg=None):
   config.optax = dict(mu_dtype='bfloat16')
 
   config.lr = ({'fast': 0.001, 'medium': 0.0003, 'long': 0.0001}[arg.variant] / 512) * config.input.batch_size
-  # config.wd = ({'fast': 3e-5, 'medium': 1e-5, 'long': 1e-6}[arg.variant] / 512) * config.input.batch_size
+  config.wd = ({'fast': 3e-5, 'medium': 1e-5, 'long': 1e-6}[arg.variant] / 512) * config.input.batch_size
   config.schedule = dict(warmup_steps=1500, decay_type='cosine')
   config.optim_name = 'adam_hp'
 
@@ -147,19 +157,19 @@ def get_config(arg=None):
   config.evals.teacher_val = {**config.evals.student_val, **teacher}
   config.evals.teacher_test = {**config.evals.student_test, **teacher}
 
-  # logits_metrics eval
-  def get_logit_metrics(split):
-    return dict(
-        type='proj.distill.logits_metrics',
-        pred='prof_m_fwd',
-        data=dict(name=config.input.data.name, split=split),
-        pp_fn=ppv + '|keep("image")',
-        log_steps=100_000,
-    )
+  # # logits_metrics eval
+  # def get_logit_metrics(split):
+  #   return dict(
+  #       type='proj.distill.logits_metrics',
+  #       pred='prof_m_fwd',
+  #       data=dict(name=config.input.data.name, split=split),
+  #       pp_fn=ppv + '|keep("image")',
+  #       log_steps=100_000,
+  #   )
 
-  config.evals.teacher_train_logit_metrics = get_logit_metrics(minitrain_split)
-  config.evals.teacher_val_logit_metrics = get_logit_metrics(val_split)
-  config.evals.teacher_test_logit_metrics = get_logit_metrics(test_split)
+  # config.evals.teacher_train_logit_metrics = get_logit_metrics(minitrain_split)
+  # config.evals.teacher_val_logit_metrics = get_logit_metrics(val_split)
+  # config.evals.teacher_test_logit_metrics = get_logit_metrics(test_split)
 
   # Could in principle also look at agreement on other datasets!
 #disableing for now to get different resolitons for teacher and student
