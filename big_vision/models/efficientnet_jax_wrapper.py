@@ -1,4 +1,6 @@
 from jeffnet.linen import create_model
+from big_vision import utils
+from big_vision.models import common
 
 
 def Model(num_classes, variant, **kwargs):
