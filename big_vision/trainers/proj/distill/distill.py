@@ -218,7 +218,7 @@ def main(argv):
     for name, params in params_cpu.items():
       parameter_overview.log_parameter_overview(params, msg=f"{name} params")
       mw.measure(f"num_params_{name}",
-                 sum(p.size for p in jax.tree_leaves(params)))
+                 sum(p.size for p in jax.tree_leaves(params["params"])))
 
   write_note(f"Initializing {config.optax_name} optimizer...")
   # For now, we explicitly only optimize the student parameters as there's

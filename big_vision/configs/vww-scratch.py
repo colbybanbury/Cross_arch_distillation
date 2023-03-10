@@ -38,12 +38,12 @@ def get_config(runlocal=False):
       name='vww',
       split='train[:90%]',
   )
-  config.input.batch_size = 512
+  config.input.batch_size = 96
   config.input.cache_raw = True
   config.input.shuffle_buffer_size = 50_000
   config.prefetch_to_device = 4
   
-  config.student_res = 96#384 #96
+  config.student_res = 96
 
   teacher_hres = 256
   teacher_lres = 256
@@ -66,10 +66,13 @@ def get_config(runlocal=False):
   config.ckpt_steps = 1000
 
   # Model section
-  config.model_name = 'mobilenetV1'
-  config.model_init = 'gs://imagenet_distill/big_vision/imgnet1k/mbnet-scratch/lr045_wd00003-bs512/01-09_1819/checkpoint.npz'
-  config.model = dict()
-  config.model_load = dict(dont_load=['head/kernel', 'head/bias'])
+  # config.model_name = 'mobilenetV1'
+  # config.model_init = 'gs://imagenet_distill/big_vision/imgnet1k/mbnet-scratch/lr045_wd00003-bs512/01-09_1819/checkpoint.npz'
+  # config.model = dict()
+  # config.model_load = dict(dont_load=['head/kernel', 'head/bias'])
+
+  config.model_name = 'efficientnet_jax_wrapper'
+  config.model = dict(variant='pt_mobilenetv2_035', num_features=112 ) #tf_mobilenetv3_small_035
 
   # config.model_name = 'vit' 
   # config.model = dict(variant='B/32', pool_type='tok')
@@ -78,14 +81,17 @@ def get_config(runlocal=False):
   # config.model = dict()
 
   # Optimizer section
-  config.optax_name = 'scale_by_adam'
-  config.optax = dict(mu_dtype='bfloat16')
   config.grad_clip_norm = 1.0
+  config.optax_name = 'big_vision.scale_by_rms_momentum'
+  config.optax = dict(eps=1e-8, momentum=0.9, decay=0.9)
 
-  # linear scaling rule. Don't forget to sweep if sweeping batch_size.
-  config.wd = 0.00001#(1e-4 / 256) * config.input.batch_size
-  config.lr = 0.0001
-  config.schedule = dict(decay_type='cosine', warmup_steps=1000)
+  steps_per_epoch = 745049 // config.input.batch_size
+
+  config.lr = 0.045#({'fast': 0.001, 'medium': 0.0003, 'long': 0.0001}[arg.variant] / 512) * config.input.batch_size
+  # config.wd = 1e-5#({'fast': 3e-5, 'medium': 1e-5, 'long': 1e-6}[arg.variant] / 512) * config.input.batch_size
+  config.schedule = dict(decay_type='step', decay_rate=0.98, decay_steps=1.0*steps_per_epoch)
+  # warmup_steps=5.0*steps_per_epoch, lr_minimum=1e-6,
+  # config.optim_name = 'adam_hp'
 
   # Eval section
   minitrain_split = 'train[:512]'

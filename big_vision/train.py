@@ -147,11 +147,12 @@ def main(argv):
     shape = tuple(train_ds.element_spec["image"].shape[1:])
     bs = batch_size // jax.device_count()
     dummy_input = jnp.zeros((bs,) + shape, jnp.float32)
-    params = flax.core.unfreeze(model.init(rng, dummy_input))["params"]
+    params_rng, dropout_rng = jax.random.split(rng)
+    params = flax.core.unfreeze(model.init({'params': params_rng, 'dropout': dropout_rng}, dummy_input, train=False))
 
     # Set bias in the head to a low value, such that loss is small initially.
     if "init_head_bias" in config:
-      params["head"]["bias"] = jnp.full_like(params["head"]["bias"],
+      params["params"]["head"]["bias"] = jnp.full_like(params["params"]["head"]["bias"],
                                              config["init_head_bias"])
 
     return params
@@ -161,16 +162,16 @@ def main(argv):
     params_cpu = init(rng_init)
 
   if jax.process_index() == 0:
-    num_params = sum(p.size for p in jax.tree_leaves(params_cpu))
+    num_params = sum(p.size for p in jax.tree_leaves(params_cpu["params"]))
     parameter_overview.log_parameter_overview(params_cpu, msg="init params")
     mw.measure("num_params", num_params)
 
   write_note(f"Initializing {config.optax_name} optimizer...")
-  tx, sched_fns = bv_optax.make(config, params_cpu, sched_kw=dict(
+  tx, sched_fns = bv_optax.make(config, params_cpu["params"], sched_kw=dict(
       total_steps=total_steps, batch_size=batch_size, data_size=ntrain_img))
 
   # We jit this, such that the arrays are created on the CPU, not device[0].
-  opt_cpu = jax.jit(tx.init, backend="cpu")(params_cpu)
+  opt_cpu = jax.jit(tx.init, backend="cpu")(params_cpu["params"])
   sched_fns_cpu = [jax.jit(sched_fn, backend="cpu") for sched_fn in sched_fns]
 
   @partial(jax.pmap, axis_name="batch", donate_argnums=(0, 1))
@@ -186,21 +187,31 @@ def main(argv):
     rng, rng_model = jax.random.split(rng, 2)
     rng_model_local = jax.random.fold_in(rng_model, jax.lax.axis_index("batch"))
 
-    def loss_fn(params, images, labels):
-      logits, _ = model.apply(
-          {"params": params}, images,
-          train=True, rngs={"dropout": rng_model_local})
-      return getattr(u, config.get("loss", "sigmoid_xent"))(
-          logits=logits, labels=labels)
+    def loss_fn(w, params, images, labels):
+      #model weights (without batch_stats) needs to be first argument to be optimized
+      if "batch_stats" not in params.keys():
+        mute = False
+        param_input = {"params": w}
+      else:
+        mute = ["batch_stats"]
+        param_input = {"params": w, "batch_stats": params["batch_stats"]}
 
-    l, grads = jax.value_and_grad(loss_fn)(params, images, labels)
+      (logits, _), updated_batch_stats = model.apply(
+          param_input, images,
+          train=True, rngs={"dropout": rng_model_local},
+          mutable= mute)
+      return getattr(u, config.get("loss", "sigmoid_xent"))(
+          logits=logits, labels=labels), updated_batch_stats
+
+    (l, updated_batch_stats), grads = jax.value_and_grad(loss_fn, has_aux=True)(params["params"], params, images, labels)
     l, grads = jax.lax.pmean((l, grads), axis_name="batch")
-    updates, opt = tx.update(grads, opt, params)
-    params = optax.apply_updates(params, updates)
+    updates, opt = tx.update(grads, opt, params["params"])
+    params["params"] = optax.apply_updates(params["params"], updates)
+    params["batch_stats"] = updated_batch_stats["batch_stats"]
 
     gs = jax.tree_leaves(bv_optax.replace_frozen(config.schedule, grads, 0.))
     measurements["l2_grads"] = jnp.sqrt(sum([jnp.vdot(g, g) for g in gs]))
-    ps = jax.tree_leaves(params)
+    ps = jax.tree_leaves(params["params"])
     measurements["l2_params"] = jnp.sqrt(sum([jnp.vdot(p, p) for p in ps]))
     us = jax.tree_leaves(updates)
     measurements["l2_updates"] = jnp.sqrt(sum([jnp.vdot(u, u) for u in us]))
@@ -211,7 +222,7 @@ def main(argv):
   # does it later. We output as many intermediate tensors as possible for
   # maximal flexibility. Later `jit` will prune out things that are not needed.
   def predict_fn(params, image):
-    logits, out = model.apply({"params": params}, image)
+    logits, out = model.apply(params, image, train=False)
     return logits, out
 
   # Decide how to initialize training. The order is important.
@@ -227,7 +238,8 @@ def main(argv):
   if resume_ckpt_path:
     write_note("Resume training from checkpoint...")
     checkpoint = {
-        "params": params_cpu,
+        "params": params_cpu["params"],
+        "batch_stats": params_cpu["batch_stats"],
         "opt": opt_cpu,
         "chrono": chrono.save(),
     }
@@ -235,16 +247,16 @@ def main(argv):
     loaded = u.load_checkpoint(checkpoint_tree, resume_ckpt_path)
     # bfloat16 type gets lost when data is saved to disk, so we recover it.
     checkpoint = jax.tree_map(u.recover_dtype, loaded)
-    params_cpu, opt_cpu = checkpoint["params"], checkpoint["opt"]
+    params_cpu["params"], opt_cpu = checkpoint["params"], checkpoint["opt"]
     chrono.load(checkpoint["chrono"])
   elif config.get("model_init"):
     write_note(f"Initialize model from {config.model_init}...")
-    params_cpu = model_mod.load(
-        params_cpu, config.model_init, config.get("model"),
+    params_cpu["params"] = model_mod.load(
+        params_cpu["params"], config.model_init, config.get("model"),
         **config.get("model_load", {}))
     if jax.process_index() == 0:
       parameter_overview.log_parameter_overview(
-          params_cpu, msg="restored params")
+          params_cpu["params"], msg="restored params")
 
   write_note("Kicking off misc stuff...")
   first_step = bv_optax.get_count(opt_cpu)
@@ -311,7 +323,7 @@ def main(argv):
       if u.itstime(step, get_steps("keep_ckpt", None), total_steps):
         copy_step = step
 
-      ckpt = {"params": params_cpu, "opt": opt_cpu, "chrono": chrono.save()}
+      ckpt = {"params": params_cpu["params"], "opt": opt_cpu, "chrono": chrono.save()}
       ckpt_writer = pool.apply_async(
           u.save_checkpoint, (ckpt, save_ckpt_path, copy_step))
       chrono.resume()
