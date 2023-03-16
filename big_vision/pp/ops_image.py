@@ -293,3 +293,18 @@ def get_randaug(num_layers: int = 2, magnitude: int = 10):
         image, num_layers, magnitude)
 
   return _randaug
+
+@Registry.register("preprocess_ops.grayscale")
+@utils.InKeyOutKey()
+def get_grayscale():
+  """Creates a function that converts an image from rgb to grayscale, 
+      thereby reducing the number of channels to 1.
+
+  Returns:
+    a function that converts an image from rgb to grayscale.
+  """
+
+  def _grayscale(image):
+    return tf.image.rgb_to_grayscale(image)
+
+  return _grayscale
