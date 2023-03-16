@@ -36,6 +36,7 @@ def get_config(arg=None):
       name='vww',
       split='train[:90%]',
   )
+  # config.input.rebalance = True #for places this is used to balance the dataset
   config.input.batch_size = 512
   config.input.cache_raw = True
   config.input.shuffle_buffer_size = 50_000
