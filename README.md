@@ -44,8 +44,13 @@ codebase:
   Lucas Beyer, Xiaohua Zhai, Alexander Kolesnikov\
   Resources: [config](big_vision/configs/vit_s16_i1k.py)
 - [UViM: A Unified Modeling Approach for Vision with Learned Guiding Codes](https://arxiv.org/abs/2205.10337), by
-  Alexander Kolesnikov^*, André Susano Pinto^*, Lucas Beyer*, Xiaohua Zhai*, Jeremiah Harmsen*, Neil Houlsby*
+  Alexander Kolesnikov^*, André Susano Pinto^*, Lucas Beyer*, Xiaohua Zhai*, Jeremiah Harmsen*, Neil Houlsby*\
   Resources: [readme](big_vision/configs/proj/uvim/README.md), [configs](big_vision/configs/proj/uvim), [colabs](big_vision/configs/proj/uvim).
+- [FlexiViT: One Model for All Patch Sizes](https://arxiv.org/abs/2212.08013), by
+  Lucas Beyer*, Pavel Izmailov*, Alexander Kolesnikov*, Mathilde Caron*, Simon
+  Kornblith*, Xiaohua Zhai*, Matthias Minderer*, Michael Tschannen*, Ibrahim
+  Alabdulmohsin*, Filip Pavetic*\
+  Resources: [readme](big_vision/configs/proj/flexivit/README.md), [configs](big_vision/configs/proj/flexivit).
 
 ### Multimodal research
 
@@ -53,6 +58,9 @@ codebase:
   Xiaohua Zhai*, Xiao Wang*, Basil Mustafa*, Andreas Steiner*, Daniel Keysers,
   Alexander Kolesnikov, and Lucas Beyer*\
   Resources: [trainer](big_vision/trainers/proj/image_text/contrastive.py), [config](big_vision/configs/proj/image_text/lit_coco.py), [colab](https://colab.research.google.com/github/google-research/big_vision/blob/main/big_vision/configs/proj/image_text/lit.ipynb).
+- [Image-and-Language Understanding from Pixels Only](https://arxiv.org/abs/2212.08045), by
+  Michael Tschannen, Basil Mustafa, Neil Houlsby\
+  Resources: [readme](big_vision/configs/proj/clippo/README.md), [config](big_vision/configs/proj/clippo/train_clippo.py).
 
 ### Knowledge distillation
 
@@ -60,6 +68,14 @@ codebase:
   Lucas Beyer*, Xiaohua Zhai*, Amélie Royer*, Larisa Markeeva*, Rohan Anil,
   and Alexander Kolesnikov*\
   Resources: [README](big_vision/configs/proj/distill/README.md), [trainer](big_vision/trainers/proj/distill/distill.py), [colab](https://colab.research.google.com/drive/1nMykzUzsfQ_uAxfj3k35DYsATnG_knPl?usp=sharing).
+
+### Training
+
+- [Sharpness-Aware Minimization for Efficiently Improving Generalization](https://arxiv.org/abs/2010.01412), by
+  Pierre Foret, Ariel Kleiner, Hossein Mobahi, Behnam Neyshabur
+
+- [Surrogate Gap Minimization Improves Sharpness-Aware Training](https://arxiv.org/abs/2203.08065), by Juntang Zhuang, Boqing Gong, Liangzhe Yuan, Yin Cui, Hartwig Adam, Nicha Dvornek, Sekhar Tatikonda, James Duncan and Ting Liu \
+  Resources: [trainer](big_vision/trainers/proj/gsam/gsam.py), [config](big_vision/configs/proj/gsam/vit_i1k_gsam_no_aug.py) [reproduced results](https://github.com/google-research/big_vision/pull/8#pullrequestreview-1078557411)
 
 ### Misc
 
@@ -84,6 +100,11 @@ APIs.
 We have a powerful configuration system, with the configs living in the
 `configs/` directory. Custom trainers and modules can directly extend/modify
 the configuration options.
+
+Project-specific code resides in the `.../proj/...` namespace. It is not always
+possible to keep project-specific in sync with the core `big_vision` libraries,
+Below we provide the [last known commit](#project-specific-commits)
+for each project where the project code is expected to work.
 
 Training jobs are robust to interruptions and will resume seamlessly from the
 last saved checkpoint (assuming a user provides the correct `--workdir` path).
@@ -274,7 +295,7 @@ Specifically, the seven TFDS datasets used during evaluations will be generated
 under `~/tensorflow_datasets` on TPU machine with this command:
 
 ```
-gcloud alpha compute tpus tpu-vm ssh $NAME --zone=$ZONE --worker=0 --command "bash big_vision/run_tpu.sh big_vision.tools.download_tfds_datasets cifar10 cifar100 oxford_iiit_pet oxford_flowers102 cars196 dtd uc_merced"
+gcloud alpha compute tpus tpu-vm ssh $NAME --zone=$ZONE --worker=0 --command "TFDS_DATA_DIR=~/tensorflow_datasets bash big_vision/run_tpu.sh big_vision.tools.download_tfds_datasets cifar10 cifar100 oxford_iiit_pet oxford_flowers102 cars196 dtd uc_merced"
 ```
 
 You can then copy the datasets to GS bucket, to make them accessible to all TPU workers.
@@ -335,6 +356,19 @@ and if this baseline happens to by useful for your research, consider citing
   year = {2022},
 }
 ```
+
+# Project specific commits
+
+The last known commit where the specific project code is expected to work. The
+core code and configs are expected to work at head.
+
+| Project    | Commit                                                                                        |
+|------------|-----------------------------------------------------------------------------------------------|
+| UViM       | https://github.com/google-research/big_vision/commit/21bd6ebe253f070f584d8b777ad76f4abce51bef |
+| image_text | https://github.com/google-research/big_vision/commit/8921d5141504390a8a4f7b2dacb3b3c042237290 |
+| distill    | https://github.com/google-research/big_vision/commit/2f3f493af048dbfd97555ff6060f31a0e686f17f |
+| GSAM       | WIP                                                                                           |
+| CLIPPO     | https://github.com/google-research/big_vision/commit/fd2d3bd2efc9d89ea959f16cd2f58ae8a495cd44 |
 
 # Citing the codebase
 

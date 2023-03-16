@@ -72,7 +72,7 @@ def get_lookup(mapping, npzkey="fnames", sep=None):
   # This is especially useful when other data (eg precomputed predictions)
   # goes along with this mapping, to have everything in one place (the npz).
   if mapping.endswith(".npz"):
-    with tf.gfile.GFile(mapping, "rb") as f:
+    with tf.io.gfile.GFile(mapping, "rb") as f:
       keys = np.array(np.load(f, allow_pickle=False)[npzkey])
     vals = np.arange(len(keys))
 
@@ -81,7 +81,7 @@ def get_lookup(mapping, npzkey="fnames", sep=None):
   # - a pair, separated by `sep` per line, first value being the string, second
   #   value being the integer that the string is mapped to.
   else:
-    with tf.gfile.GFile(mapping, "rt") as f:
+    with tf.io.gfile.GFile(mapping, "r") as f:
       buf = f.read()
     if sep is None:  # values are the line numbers
       keys = buf.splitlines()
@@ -92,12 +92,9 @@ def get_lookup(mapping, npzkey="fnames", sep=None):
 
   def _do_the_mapping(needle):
     """Map string to number."""
-
-    with tf.init_scope():
-      init = tf.lookup.KeyValueTensorInitializer(
-          tf.constant(keys), tf.constant(vals))
-      table = tf.contrib.lookup.HashTable(init, -1)
-
+    with tf.init_scope():  # (Originally added for performance reasons.)
+      table = tf.lookup.StaticHashTable(
+          tf.lookup.KeyValueTensorInitializer(keys, vals), -1)
     return table.lookup(needle)
 
   return _do_the_mapping
@@ -126,9 +123,10 @@ def get_onehot(depth,
   """
 
   def _onehot(data):
-    # When there's more than one label, this is significantly more efficient
+  # When there's more than one label, this is significantly more efficient
     # than using tf.one_hot followed by tf.reduce_max; we tested.
     labels = data[key]
+    labels = tf.cast(labels, tf.int64)  # both scatter and one_hot expect this
     if labels.shape.rank > 0 and multi:
       x = tf.scatter_nd(labels[:, None], tf.ones(tf.shape(labels)[0]), (depth,))
       x = tf.clip_by_value(x, 0, 1) * (on - off) + off
@@ -209,10 +207,15 @@ def get_rag_tensor():
 @Registry.register("preprocess_ops.pad_to_shape")
 @utils.InKeyOutKey()
 def get_pad_to_shape(shape, pad_value=0):
+  """Pads tensor to specified `shape`."""
+
   def _pad_to_shape(x):
     assert len(x.shape.as_list()) == len(shape)
     paddings = [[0, shape[i] - tf.shape(x)[i]] for i in range(len(shape))]
-    return tf.pad(x, paddings, constant_values=tf.constant(pad_value, x.dtype))
+    constant_value = tf.constant(pad_value, x.dtype)
+    ret = tf.pad(x, paddings, constant_values=constant_value)
+    ret.set_shape(shape)
+    return ret
 
   return _pad_to_shape
 
