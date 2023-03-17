@@ -264,7 +264,7 @@ def main(argv):
   for step, batch in zip(range(first_step + 1, total_steps + 1), train_iter):
     mw.step_start(step)
 
-    np_rng = flexi.mkrng(xm_xp.id, xm_wu.id, step)
+    np_rng = flexi.mkrng(xid, wid, step)
     flexi_args = [
         flexi.choice(config.flexi[n].v, config.flexi[n].p, np_rng)
         for n in flexi_argnames
