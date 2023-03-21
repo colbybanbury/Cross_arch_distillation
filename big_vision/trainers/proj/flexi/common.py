@@ -45,3 +45,9 @@ def mkpredictfns(predict_fn, config, template="predict_{x}"):
       template.format(x="_".join(f"{k}={v}" for k, v in kw.items())):
           functools.partial(predict_fn, **kw)
       for kw in all_combinations}
+
+def step(values, starting_steps, step):
+  #returns the value based on the starting step
+  for i in reversed(range(len(starting_steps))):
+    if step > starting_steps[i]:
+      return values[i]
