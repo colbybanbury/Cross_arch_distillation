@@ -52,6 +52,10 @@ from tensorflow.io import gfile
 
 import big_vision.pp.ops_image as pp_ops_image
 
+
+import wandb
+
+
 # pylint: disable=logging-fstring-interpolation
 
 
@@ -88,6 +92,9 @@ def main(argv):
       f"\u001b[33mHello from process {jax.process_index()} holding "
       f"{jax.local_device_count()}/{jax.device_count()} devices and "
       f"writing to workdir {workdir}.\u001b[0m")
+  
+
+  wandb.init(project="mbnetv2-lr-wd-sweep", config=config, name=config.log_name)
 
   save_ckpt_path = None
   if workdir:  # Always create if requested, even if we may not write into it.
@@ -130,7 +137,7 @@ def main(argv):
        batch_size // jax.device_count())
 
   # First thing after above sanity checks, so we can log "start" ticks.
-  mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
+  mw = u.BigVisionMetricWriter(xid, wid, workdir, config, wandb=wandb)
 
   write_note("Initializing train dataset...")
   train_ds, ntrain_img = input_pipeline.training(config.input)
@@ -407,6 +414,7 @@ def main(argv):
       for i, sched_fn_cpu in enumerate(sched_fns_cpu):
         mw.measure(f"global_schedule{i if i else ''}", sched_fn_cpu(step - 1))
       l = mw.measure("training_loss", loss_value[0])
+    
       for name, value in measurements.items():
         mw.measure(name, value[0])
       u.chrono.tick(step)
@@ -471,6 +479,7 @@ def main(argv):
   pool.close()
   pool.join()
   mw.close()
+
 
   # Make sure all hosts stay up until the end of main.
   u.sync()

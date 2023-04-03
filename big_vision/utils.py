@@ -1070,8 +1070,9 @@ def startstop_prof_at_steps(
 class BigVisionMetricWriter:
   """A class for logging metrics."""
 
-  def __init__(self, xid=-1, wid=-1, workdir=None, config=None):
+  def __init__(self, xid=-1, wid=-1, workdir=None, config=None, wandb=None):
     self.step_start(0)
+    self.wandb = wandb
     if jax.process_index() != 0: return  # Only one host shall write stuff.
 
     self.pool = multiprocessing.pool.ThreadPool(1)  # 1 is important here.
@@ -1106,7 +1107,11 @@ class BigVisionMetricWriter:
     logging.flush()
     self.step_metrics[name] = value
 
+    if self.wandb:
+      self.wandb.log({name: value}, step=self.step)
+
     return value  # Just for convenience
+    
 
   def step_end(self):
     """Ends a training step, write its full row."""
@@ -1125,6 +1130,8 @@ class BigVisionMetricWriter:
     if jax.process_index() == 0:
       self.pool.close()
       self.pool.join()
+    if self.wandb:
+      self.wandb.finish()
 
 
 def maybe_cleanup_workdir(workdir, cleanup, info):
