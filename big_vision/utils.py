@@ -181,7 +181,9 @@ def load_params(tree, npz):
         ("://" in npz and npz.count(":") == 2)):  # Like gs://path/to/file:sub
       npz, key = npz.rsplit(":", 1)
   checkpoint = load_checkpoint(tree, npz)
-  if "params" in checkpoint:
+  if "batch_stats" in checkpoint and "params" in checkpoint:
+    params = {"params": checkpoint["params"], "batch_stats": checkpoint["batch_stats"]}
+  elif "params" in checkpoint:
     # Checkpoint with optax state (after cl/423007216).
     params = checkpoint["params"]
   elif "opt" in checkpoint:

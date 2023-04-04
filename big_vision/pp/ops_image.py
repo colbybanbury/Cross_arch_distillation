@@ -28,6 +28,30 @@ from big_vision.pp.registry import Registry
 
 import tensorflow as tf
 
+MEAN_RGB = [0.485 * 255, 0.456 * 255, 0.406 * 255]
+STDDEV_RGB = [0.229 * 255, 0.224 * 255, 0.225 * 255]
+
+@Registry.register("preprocess_ops.normalize")
+@utils.InKeyOutKey()
+def get_normalize(mean=MEAN_RGB, std=STDDEV_RGB):
+  """Normalizes the image with given mean and stddev.
+
+  Args:
+    mean: A list of mean values for each channel.
+    std: A list of stddev values for each channel.
+
+  Returns:
+    A function to normalize the image.
+  """
+
+  def _normalize(image):
+    """Normalizes the image."""
+    image = tf.cast(image, tf.float32)
+    image -= tf.constant(mean, shape=[1, 1, 3], dtype=image.dtype)
+    image /= tf.constant(std, shape=[1, 1, 3], dtype=image.dtype)
+    return image
+
+  return _normalize
 
 @Registry.register("preprocess_ops.decode")
 @utils.InKeyOutKey()

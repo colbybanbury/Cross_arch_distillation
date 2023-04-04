@@ -40,6 +40,8 @@ import tensorflow as tf
 
 from tensorflow.io import gfile
 
+import wandb
+
 # pylint: disable=logging-fstring-interpolation
 
 
@@ -64,6 +66,8 @@ def main(argv):
       f"\u001b[33mHello from process {jax.process_index()} holding "
       f"{jax.local_device_count()}/{jax.device_count()} devices and "
       f"writing to workdir {workdir}.\u001b[0m")
+
+  wandb.init(project="variant-sweep-pets", config=config, name=config.log_name)
 
   save_ckpt_path = None
   if workdir:  # Always create if requested, even if we may not write into it.
@@ -106,7 +110,7 @@ def main(argv):
        batch_size // jax.device_count())
 
   # First thing after above sanity checks, so we can log "start" ticks.
-  mw = u.BigVisionMetricWriter(xid, wid, workdir, config)
+  mw = u.BigVisionMetricWriter(xid, wid, workdir, config, wandb=wandb)
 
   write_note("Initializing train dataset...")
   train_ds, ntrain_img = input_pipeline.training(config.input)
@@ -252,8 +256,8 @@ def main(argv):
     chrono.load(checkpoint["chrono"])
   elif config.get("model_init"):
     write_note(f"Initialize model from {config.model_init}...")
-    params_cpu["params"] = model_mod.load(
-        params_cpu["params"], config.model_init, config.get("model"),
+    params_cpu = model_mod.load(
+        params_cpu, config.model_init, config.get("model"),
         **config.get("model_load", {}))
     if jax.process_index() == 0:
       parameter_overview.log_parameter_overview(
@@ -318,7 +322,12 @@ def main(argv):
       if u.itstime(step, get_steps("keep_ckpt", None), total_steps):
         copy_step = step
 
-      ckpt = {"params": params_cpu["params"], "opt": opt_cpu, "chrono": u.chrono.save()}
+      ckpt = {
+        "params": params_cpu["params"],
+        "batch_stats": params_cpu["batch_stats"],
+        "opt": opt_cpu,
+        "chrono": u.chrono.save(),
+      }
       ckpt_writer = pool.apply_async(
           u.save_checkpoint, (ckpt, save_ckpt_path, copy_step))
       u.chrono.resume()

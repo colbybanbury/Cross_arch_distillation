@@ -26,7 +26,6 @@ import jax
 import numpy as np
 import tensorflow as tf
 
-
 @Registry.register("preprocess_ops.value_range")
 @utils.InKeyOutKey()
 def get_value_range(vmin=-1, vmax=1, in_min=0, in_max=255.0, clip_values=False):
