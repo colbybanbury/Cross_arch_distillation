@@ -52,7 +52,8 @@ def load_url(variables, url, dont_load=None, filter_fn=_filter):
     flat_params = flatten_dict(var_unfrozen['params'])
     flat_param_keys = set()
     for k, v in flat_params.items():
-        if '/'.join(k) in dont_load:
+        #dontload can be a list of keys or a prefixes (e.g. 'head')
+        if '/'.join(k) in dont_load or dont_load[0] in '/'.join(k):
             continue
         flat_k = '.'.join(k)
         if flat_k in source_params:
