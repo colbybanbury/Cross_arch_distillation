@@ -94,7 +94,7 @@ def main(argv):
       f"writing to workdir {workdir}.\u001b[0m")
   
 
-  wandb.init(project="mbnetv2-lr-wd-sweep", config=config, name=config.log_name)
+  wandb.init(project=config.proj_name, config=config, name=config.log_name)
 
   save_ckpt_path = None
   if workdir:  # Always create if requested, even if we may not write into it.

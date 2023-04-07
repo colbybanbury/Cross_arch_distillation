@@ -22,15 +22,14 @@ big_vision.train \
 
 import ml_collections as mlc
 import big_vision.configs.common as bvcc
-
-from jeffnet.common.model_cfgs import get_model_cfg
+import big_vision.configs.proj.distill.common as cd
 
 NCLS = dict(flowers=102, pet=37)
 
 def get_config(arg=None):
   """Config for sweeping embedded architectures on Pets."""
 
-  arg = bvcc.parse_arg(arg, proj_name="unamed_proj", runlocal=False, data='pet', lr=-1., wd=-1.,epochs=-1, variant="pt_mobilenetv2_035", speed='fast',init_model=False,)
+  arg = bvcc.parse_arg(arg, proj_name="unamed_proj", runlocal=False, data='pet', lr=-1, wd=-1, epochs=-1, variant="pt_mobilenetv2_035", speed='fast',)
   config = mlc.ConfigDict()
 
   config.input = {}
@@ -55,21 +54,21 @@ def get_config(arg=None):
   config.log_training_steps = 100
   config.ckpt_steps = 2500
 
-
   config.proj_name = arg.proj_name
-  config.log_name = f"{arg.variant}"
+  config.log_name = f"{arg.variant}_distill"
   if arg.lr >= -1:
     config.log_name += f"-lr{arg.lr}"
   if arg.wd >= -1:
     config.log_name += f"-wd{arg.wd}"
 
   # Model section
-  config.model_name = 'efficientnet_jax_wrapper'
-  config.model = dict(variant=arg.variant)
-  if arg.init_model:
-    model_cfg = get_model_cfg(arg.variant)
-    config.model_init = model_cfg["default_cfg"]["url"]
-    config.model_load = dict(dont_load=["head"])
+  config.student_name = 'efficientnet_jax_wrapper'
+  config.student = dict(variant=arg.variant)
+
+  config.teachers = ['prof_m']
+  config.prof_m_name = 'bit_paper'
+  config.prof_m_init = cd.inits[f'BiT-M R152x2 {arg.data} rc128']
+  config.prof_m = dict(depth=152, width=2)
 
 
   # identical pre-preprocessing as distillation
@@ -80,15 +79,21 @@ def get_config(arg=None):
 
   crop='inception_crop(224)'
 
+  teacher_norm = 'value_range'
+  # if arg.teacher == "mobilenetv2-120d":
+  #   teacher_norm = 'normalize'
+
+  # Preprocessing pipeline for student & teacher.
   pp_common = (
       f'|onehot({config.num_classes}, key="label", key_result="labels")'
-      f'|keep("image", "labels")'
+      f'|keep("image", "labels", "{config.teachers[0]}")'
   )
+
   config.input.pp = (
     f'decode|{crop}|flip_lr|'
-    f'|value_range(-1, 1)|resize_small({config.student_res})' 
+    f'|{teacher_norm}(inkey="image", outkey="prof_m")|value_range(-1, 1)|resize_small({config.student_res})' 
   )+ pp_common
-  ppv = f'decode|resize_small({hres})|central_crop({lres})|normalize' + pp_common
+  ppv = f'decode|resize_small({hres})|central_crop({lres})|{teacher_norm}' + pp_common
 
   if config.student_res is not None:
     ppv_student = f'decode|resize_small({hres})|central_crop({lres})|resize_small({config.student_res})|value_range(-1, 1)' + pp_common
@@ -96,6 +101,13 @@ def get_config(arg=None):
     ppv_student = ppv
 
   config.mixup = dict(p=1.0, n=2)
+
+  # Distillation settings
+  config.distance = 'kl'
+  config.distance_kw = dict(t={
+      'flowers': {'fast': 1., 'medium': 1., 'long': 1.},
+      'pet': {'fast': 5., 'medium': 5., 'long': 2.},
+  }[arg.data][arg.speed])
 
   # Optimizer section
   config.grad_clip_norm = 1.0
@@ -132,15 +144,22 @@ def get_config(arg=None):
   def get_eval(split):
     return dict(
         type='classification',
+        pred='student_fwd',
         data=dict(name=config.input.data.name, split=split),
         pp_fn=ppv_student,
         loss_name='softmax_xent',
         log_steps=500,
     )
   config.evals = {}
-  config.evals.train = get_eval(minitrain_split)
-  config.evals.val = get_eval(val_split)
-  config.evals.test = get_eval(test_split)
+  config.evals.student_train = get_eval(minitrain_split)
+  config.evals.student_val = get_eval(val_split)
+  config.evals.student_test = get_eval(test_split)
+
+  # Teacher is fixed, so rare evals.
+  teacher = dict(log_steps=100_000, pred='prof_m_fwd', pp_fn=ppv)
+  config.evals.teacher_train = {**config.evals.student_train, **teacher}
+  config.evals.teacher_val = {**config.evals.student_val, **teacher}
+  config.evals.teacher_test = {**config.evals.student_test, **teacher}
 
   if arg.runlocal:
     config.input.shuffle_buffer_size = 10

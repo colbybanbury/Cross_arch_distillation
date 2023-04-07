@@ -67,7 +67,7 @@ def main(argv):
       f"{jax.local_device_count()}/{jax.device_count()} devices and "
       f"writing to workdir {workdir}.\u001b[0m")
 
-  wandb.init(project="variant-sweep-pets", config=config, name=config.log_name)
+  wandb.init(project=config.proj_name, config=config, name=config.log_name)
 
   save_ckpt_path = None
   if workdir:  # Always create if requested, even if we may not write into it.
@@ -253,7 +253,7 @@ def main(argv):
     # bfloat16 type gets lost when data is saved to disk, so we recover it.
     checkpoint = jax.tree_map(u.recover_dtype, loaded)
     params_cpu["params"], opt_cpu = checkpoint["params"], checkpoint["opt"]
-    chrono.load(checkpoint["chrono"])
+    u.chrono.load(checkpoint["chrono"])
   elif config.get("model_init"):
     write_note(f"Initialize model from {config.model_init}...")
     params_cpu = model_mod.load(
