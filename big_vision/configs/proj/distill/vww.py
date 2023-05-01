@@ -28,7 +28,7 @@ import ml_collections as mlc
 
 def get_config(arg=None):
   """Config for massive hypothesis-test on vww"""
-  arg = bvcc.parse_arg(arg, runlocal=False, data='vww', variant='medium')
+  arg = bvcc.parse_arg(arg, runlocal=False, data='vww', variant='fast')
   config = mlc.ConfigDict()
 
   config.input = {}
@@ -54,7 +54,7 @@ def get_config(arg=None):
 
 
   config.student_name = 'efficientnet_jax_wrapper'
-  config.student = dict(variant='tf_efficientnet_lite0_035w')
+  config.student = dict(variant='pt_mobilenetv2_035')
 
   
   # config.student_name = 'mobilenetV1'

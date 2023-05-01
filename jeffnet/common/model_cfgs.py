@@ -65,30 +65,106 @@ _model_cfg = dict(
         arch_cfg=pt_acfg(feat_multiplier=0.35),
         arch_fn=arch_mobilenet_v2,
     ),
+    pt_mobilenetv2_100_noskip=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
+        arch_cfg=pt_acfg(full_noskip=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    pt_mobilenetv2_100_se=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
+        arch_cfg=pt_acfg(squeeze_excite=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    pt_mobilenetv2_100_se_noskip=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
+        arch_cfg=pt_acfg(full_noskip=True, squeeze_excite=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+
     pt_mobilenetv2_100=dict(
         default_cfg=dcfg(
             url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
         arch_cfg=pt_acfg(),
         arch_fn=arch_mobilenet_v2,
     ),
-    pt_mobilenetv2_110d=dict(
+    pt_mobilenetv2_100_120d=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
+        arch_cfg=pt_acfg(depth_multiplier=1.2, fix_stem_head=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    pt_mobilenetv2_100_140d=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
+        arch_cfg=pt_acfg(depth_multiplier=1.4, fix_stem_head=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    
+    pt_mobilenetv2_110=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_100-39fce4c0.npz'),
+        arch_cfg=pt_acfg(feat_multiplier=1.1,),
+        arch_fn=arch_mobilenet_v2,
+    ),
+
+    pt_mobilenetv2_110_120d=dict(
         default_cfg=dcfg(
             url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_110d-fbaf9685.npz'),
         arch_cfg=pt_acfg(feat_multiplier=1.1, depth_multiplier=1.2, fix_stem_head=True),
         arch_fn=arch_mobilenet_v2,
     ),
-    pt_mobilenetv2_120d=dict(
+    pt_mobilenetv2_110_140d=dict(
+        default_cfg=dcfg(
+            url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_110d-fbaf9685.npz'),
+        arch_cfg=pt_acfg(feat_multiplier=1.1, depth_multiplier=1.4, fix_stem_head=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+
+
+    pt_mobilenetv2_120=dict(
+        default_cfg=dcfg(
+            url=''),
+        arch_cfg=pt_acfg(feat_multiplier=1.2,),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    pt_mobilenetv2_120_120d=dict(
+        default_cfg=dcfg(
+            url=''),
+        arch_cfg=pt_acfg(feat_multiplier=1.2, depth_multiplier=1.2, fix_stem_head=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    pt_mobilenetv2_120_140d=dict(
         default_cfg=dcfg(
             url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_120d-eaa01988.npz'),
         arch_cfg=pt_acfg(feat_multiplier=1.2, depth_multiplier=1.4, fix_stem_head=True),
         arch_fn=arch_mobilenet_v2,
     ),
+
     pt_mobilenetv2_140=dict(
         default_cfg=dcfg(
             url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv2_140-9b7c5e30.npz'),
         arch_cfg=pt_acfg(feat_multiplier=1.4),
         arch_fn=arch_mobilenet_v2,
     ),
+    pt_mobilenetv2_140_120d=dict(
+        default_cfg=dcfg(
+            url=''),
+        arch_cfg=pt_acfg(feat_multiplier=1.4, depth_multiplier=1.2, fix_stem_head=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+    pt_mobilenetv2_140_140d=dict(
+        default_cfg=dcfg(
+            url=''),
+        arch_cfg=pt_acfg(feat_multiplier=1.4, depth_multiplier=1.4, fix_stem_head=True),
+        arch_fn=arch_mobilenet_v2,
+    ),
+
+
+
+
 
     pt_fbnetc_100=dict(
         default_cfg=dcfg(
@@ -565,6 +641,11 @@ _model_cfg = dict(
             interpolation='bicubic',
             url='https://github.com/rwightman/efficientnet-jax/releases/download/weights/pt_mobilenetv3_large_100-0e2a5d09.npz'),
         arch_cfg=pt_acfg(),
+        arch_fn=arch_mobilenet_v3,
+    ),
+    pt_mobilenetv3_small_035=dict(
+        default_cfg=dcfg(url=''),
+        arch_cfg=pt_acfg(feat_multiplier=0.35),
         arch_fn=arch_mobilenet_v3,
     ),
     pt_mobilenetv3_small_075=dict(

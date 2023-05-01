@@ -30,8 +30,10 @@ NCLS = dict(flowers=102, pet=37)
 def get_config(arg=None):
   """Config for sweeping embedded architectures on Pets."""
 
-  arg = bvcc.parse_arg(arg, proj_name="unamed_proj", runlocal=False, data='pet', lr=-1., wd=-1.,epochs=-1, variant="pt_mobilenetv2_035", speed='fast',init_model=False,)
+  arg = bvcc.parse_arg(arg, proj_name="unamed_proj", runlocal=False, data='pet', lr=-1., wd=-1., res=128, epochs=-1, variant="pt_mobilenetv2_035", width=-1.0, depth=-1.0, speed='fast',init_model=False,seed=0)
   config = mlc.ConfigDict()
+
+  config.seed = arg.seed
 
   config.input = {}
   config.input.data = dict(
@@ -58,14 +60,23 @@ def get_config(arg=None):
 
   config.proj_name = arg.proj_name
   config.log_name = f"{arg.variant}"
-  if arg.lr >= -1:
+  if arg.lr >= 0:
     config.log_name += f"-lr{arg.lr}"
-  if arg.wd >= -1:
+  if arg.wd >= 0:
     config.log_name += f"-wd{arg.wd}"
+  if arg.width > 0:
+    config.log_name += f"-w{arg.width}"
+  if arg.depth > 0:
+    config.log_name += f"-d{arg.depth}"
 
   # Model section
   config.model_name = 'efficientnet_jax_wrapper'
   config.model = dict(variant=arg.variant)
+
+  if arg.width > 0:
+    config.model.feat_multiplier = arg.width
+  if arg.depth > 0:
+    config.model.depth_multiplier = arg.depth
   if arg.init_model:
     model_cfg = get_model_cfg(arg.variant)
     config.model_init = model_cfg["default_cfg"]["url"]
@@ -73,7 +84,7 @@ def get_config(arg=None):
 
 
   # identical pre-preprocessing as distillation
-  config.student_res = 128
+  config.student_res = arg.res
 
   hres = 256
   lres = 224

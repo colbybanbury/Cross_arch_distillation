@@ -289,19 +289,23 @@ def arch_mnasnet_small(variant, feat_multiplier=1.0, **kwargs):
 
 
 def arch_mobilenet_v2(
-        variant, feat_multiplier=1.0, depth_multiplier=1.0, fix_stem_head=False, **kwargs):
+        variant, feat_multiplier=1.0, depth_multiplier=1.0, fix_stem_head=False, full_noskip=False, squeeze_excite=False, **kwargs):
     """ Generate MobileNet-V2 network
     Ref impl: https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet_v2.py
     Paper: https://arxiv.org/abs/1801.04381
     """
+
+    skip = '_noskip' if full_noskip else ''
+    se = '_se0.25' if squeeze_excite else ''
+
     arch_def = [
-        ['ds_r1_k3_s1_c16'],
-        ['ir_r2_k3_s2_e6_c24'],
-        ['ir_r3_k3_s2_e6_c32'],
-        ['ir_r4_k3_s2_e6_c64'],
-        ['ir_r3_k3_s1_e6_c96'],
-        ['ir_r3_k3_s2_e6_c160'],
-        ['ir_r1_k3_s1_e6_c320'],
+        ['ds_r1_k3_s1_c16'+se+skip],
+        ['ir_r2_k3_s2_e6_c24'+se+skip],
+        ['ir_r3_k3_s2_e6_c32'+se+skip],
+        ['ir_r4_k3_s2_e6_c64'+se+skip],
+        ['ir_r3_k3_s1_e6_c96'+se+skip],
+        ['ir_r3_k3_s2_e6_c160'+se+skip],
+        ['ir_r1_k3_s1_e6_c320'+se+skip],
     ]
     model_kwargs = dict(
         block_defs=decode_arch_def(arch_def, depth_multiplier=depth_multiplier, fix_first_last=fix_stem_head),

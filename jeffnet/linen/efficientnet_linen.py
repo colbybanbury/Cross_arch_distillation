@@ -124,9 +124,16 @@ def _filter(state_dict):
 
 def create_model(variant, pretrained=False, rng=None, input_shape=None, dtype=jnp.float32, **kwargs):
     model_cfg = get_model_cfg(variant)
+
+    #all scaling from config
+    if 'feat_multiplier' in kwargs:
+        model_cfg['arch_cfg']['feat_multiplier'] = kwargs.pop('feat_multiplier')
+    if 'depth_multiplier' in kwargs:
+        model_cfg['arch_cfg']['depth_multiplier'] = kwargs.pop('depth_multiplier')
+        model_cfg['arch_cfg']['fix_stem_head'] = True
     model_args = model_cfg['arch_fn'](variant, **model_cfg['arch_cfg'])
     model_args.update(kwargs)
-
+    
     # resolve some special layers and their arguments
     se_args = model_args.pop('se_cfg', {})  # not consumable by model
     if 'se_layer' not in model_args:
