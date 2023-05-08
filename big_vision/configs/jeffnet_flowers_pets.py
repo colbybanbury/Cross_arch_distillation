@@ -25,7 +25,7 @@ import big_vision.configs.common as bvcc
 
 from jeffnet.common.model_cfgs import get_model_cfg
 
-NCLS = dict(flowers=102, pet=37)
+NCLS = dict(flowers=102, pet=37, imagenet=1000)
 
 def get_config(arg=None):
   """Config for sweeping embedded architectures on Pets."""
@@ -37,10 +37,10 @@ def get_config(arg=None):
 
   config.input = {}
   config.input.data = dict(
-      name=dict(flowers='oxford_flowers102', pet='oxford_iiit_pet')[arg.data],
-      split=dict(flowers='train', pet='train[:90%]')[arg.data],
+      name=dict(flowers='oxford_flowers102', pet='oxford_iiit_pet', imagenet='imagenet2012')[arg.data],
+      split=dict(flowers='train', pet='train[:90%]', imagenet='train[:98%]')[arg.data],
   )
-  config.input.batch_size = 256
+  config.input.batch_size = 256 if arg.data != 'imagenet' else 1024
   config.input.cache_raw = True
   config.input.shuffle_buffer_size = 25_000
   config.prefetch_to_device = 4
@@ -52,6 +52,7 @@ def get_config(arg=None):
     config.total_epochs = {
         'flowers': {'fast': 25_000, 'medium': 100_000, 'long': 1_000_000},
         'pet': {'fast': 1000, 'medium': 3000, 'long': 30_000},
+        'imagenet': {'fast': 600, 'medium': 3000, 'long': 30_000},
     }[arg.data][arg.speed]
 
   config.log_training_steps = 100
@@ -117,6 +118,7 @@ def get_config(arg=None):
     config.lr = {
         'flowers':{'fast': 0.001, 'medium': 0.001, 'long': 0.0003}, #{'fast': 5e-5}
         'pet': {'fast': 0.01, 'medium': 0.003, 'long': 0.003},
+        'imagenet': {'fast': 0.001, 'medium': 0.0003, 'long': 0.0003},
     }[arg.data][arg.speed]
   else:
     config.lr = arg.lr
@@ -124,6 +126,7 @@ def get_config(arg=None):
     config.wd = {
         'flowers': {'fast': 3e-4, 'medium': 1e-4, 'long': 1e-5}, # {'fast': 5e-6},
         'pet': {'fast': 1e-3, 'medium': 3e-4, 'long': 1e-5},
+        'imagenet': {'fast': 1e-4, 'medium': 3e-5, 'long': 1e-6},
     }[arg.data][arg.speed]
   else:
     config.wd = arg.wd
@@ -139,6 +142,10 @@ def get_config(arg=None):
   elif arg.data == 'pet':
     val_split = 'train[90%:]' if not arg.runlocal else 'train[:16]'
     test_split = 'test' if not arg.runlocal else 'test[:16]'
+  elif arg.data == 'imagenet':
+    minitrain_split = 'train[98%:]' if not arg.runlocal else 'train[:16]'
+    val_split = 'validation' if not arg.runlocal else 'validation[:16]'
+
 
   def get_eval(split):
     return dict(
@@ -151,7 +158,8 @@ def get_config(arg=None):
   config.evals = {}
   config.evals.train = get_eval(minitrain_split)
   config.evals.val = get_eval(val_split)
-  config.evals.test = get_eval(test_split)
+  if arg.data != 'imagenet':
+    config.evals.test = get_eval(test_split)
 
   if arg.runlocal:
     config.input.shuffle_buffer_size = 10
